@@ -304,7 +304,7 @@ def main():
     # except Exception as e:
     #     log_message("ERROR", f"发送启动通知失败: {str(e)}")
 
-    log_message("INFO", f"启动会议室预订监控服务, 检查间隔: {CONFIG['check_interval_minutes']}分钟")
+    # log_message("INFO", f"启动会议室预订监控服务, 检查间隔: {CONFIG['check_interval_minutes']}分钟")
     
     # 立即执行一次
     check_room_bookings()
