@@ -1,0 +1,9 @@
+
+.env
+config.json
+*.session
+*.session-journal
+*.db
+.DS_Store
+__pycache__/
+
