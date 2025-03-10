@@ -57,7 +57,7 @@ def check_room_bookings():
         # now = datetime.datetime.now()
         # end_time = now + datetime.timedelta(hours=1)  # 查看未来1小时的预订
         now = datetime.datetime.now() + datetime.timedelta(hours=-1)
-        end_time = now + datetime.timedelta(hours=24)  # 查看未来1小时的预订
+        end_time = now + datetime.timedelta(hours=72)  # 查看未来1小时的预订
 
         # 格式化为Outlook所需的时间字符串格式
         start_str = now.strftime("%m/%d/%Y %H:%M %p")
@@ -128,7 +128,7 @@ def check_room_bookings():
                 if send_telegram_message(message):
                     # 标记事件为已处理
                     if mark_event_processed(event_id, appointment):
-                        log_message("INFO", f"已发送通知: {subject}")
+                        log_message("INFO", f"已发送通知: {appointment.Subject}_{appointment.Start}_{appointment.End}_{appointment.Organizer}")
                         notifications_sent += 1
 
         if notifications_sent > 0:
@@ -287,6 +287,7 @@ def generate_event_id(appointment):
     """生成事件的唯一ID，使用哈希以确保稳定性"""
     # 使用主题、开始时间、结束时间和组织者生成唯一标识
     event_str = f"{appointment.Subject}_{appointment.Start}_{appointment.End}_{appointment.Organizer}"
+    print(event_str)
     # 使用SHA-256哈希确保ID的唯一性和一致性
     return hashlib.sha256(event_str.encode('utf-8')).hexdigest()
 
