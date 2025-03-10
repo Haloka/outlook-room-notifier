@@ -34,7 +34,7 @@ def check_room_bookings():
         
         # 如果无法解析会议室邮箱，则给出警告
         if not recipient.Resolved:
-            print(f"警告: 无法解析会议室邮箱 {CONFIG['room_email']}，请确保已添加到Outlook")
+            print(f"警告: 无法解析会议室邮箱 {CONFIG['room_email']}，尝试使用GAL查找")
             # 尝试在GAL中查找
             recipient.Resolve()
             if not recipient.Resolved:
@@ -113,16 +113,16 @@ def check_room_bookings():
                 
                 # 创建消息
                 message = (
-                    f"🔔 *会议室预订通知*\n\n"
-                    f"📅 *日期*: {start_date}\n"
-                    f"🕒 *时间*: {start_time_str} - {end_time_str}\n"
-                    f"👤 *预订人*: {organizer}\n"
-                    f"📝 *主题*: {subject}"
+                    f"🔔 会议室预订通知（自动任务）\n\n"
+                    f"📅 日期: {start_date}\n"
+                    f"🕒 时间: {start_time_str} - {end_time_str}\n"
+                    f"👤 预订人: {organizer}\n"
+                    f"📝 主题: {subject}"
                 )
                 
                 # 如果有位置信息，添加到消息中
                 if appointment.Location:
-                    message += f"\n📍 *地点*: {appointment.Location}"
+                    message += f"\n📍 地点: {appointment.Location}"
                 
                 # 发送Telegram通知
                 if send_telegram_message(message):
