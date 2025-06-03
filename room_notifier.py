@@ -31,27 +31,7 @@ def check_room_bookings():
         
         # 尝试获取会议室日历
         recipient = namespace.CreateRecipient(CONFIG['room_email'])
-        
-        # 如果无法解析会议室邮箱，则给出警告
-        if not recipient.Resolved:
-            print(f"警告: 无法解析会议室邮箱 {CONFIG['room_email']}，尝试使用GAL查找")
-            # 尝试在GAL中查找
-            recipient.Resolve()
-            if not recipient.Resolved:
-                print("仍然无法解析，将使用默认日历")
-                calendar = namespace.GetDefaultFolder(9)  # 9 = olFolderCalendar
-            else:
-                print("已在GAL中找到会议室")
-                calendar = namespace.GetSharedDefaultFolder(recipient, 9)  # 9 = olFolderCalendar
-        else:
-            # 获取共享日历
-            try:
-                calendar = namespace.GetSharedDefaultFolder(recipient, 9)  # 9 = olFolderCalendar
-                print(f"成功获取会议室 {CONFIG['room_email']} 的共享日历")
-            except Exception as e:
-                print(f"无法获取共享日历: {str(e)}")
-                print("将使用默认日历并过滤会议室相关事件")
-                calendar = namespace.GetDefaultFolder(9)  # 9 = olFolderCalendar
+        calendar = namespace.GetSharedDefaultFolder(recipient, 9)  # 9 = olFolderCalendar
         
         # 计算时间范围
         # now = datetime.datetime.now()
@@ -76,54 +56,37 @@ def check_room_bookings():
         for appointment in appointments:
             # 生成唯一ID
             event_id = generate_event_id(appointment)
-
-            # 如果使用个人日历需要过滤
-            if calendar == namespace.GetDefaultFolder(9):
-                # 检查地点是否包含会议室名称
-                is_room_event = False
-                room_name = CONFIG['room_email'].split('@')[0].lower()
-                
-                if appointment.Location and room_name in appointment.Location.lower():
-                    is_room_event = True
-                
-                # 检查与会者是否包含会议室
-                if not is_room_event:
-                    for recipient in appointment.Recipients:
-                        if CONFIG['room_email'].lower() in str(recipient).lower():
-                            is_room_event = True
-                            break
-                
-                # 如果与会议室无关，跳过
-                if not is_room_event:
-                    continue
             
             # 检查是否已处理过此事件
             if not is_event_processed(event_id):
                 # 获取事件详情
                 organizer = appointment.Organizer
-                subject = appointment.Subject if appointment.Subject else "无主题"
+                subject = get_subject(appointment)
                 
                 # 格式化时间
                 start_time = appointment.Start
                 end_time = appointment.End
-                
-                start_date = start_time.strftime('%Y-%m-%d')
-                start_time_str = start_time.strftime('%H:%M')
                 end_time_str = end_time.strftime('%H:%M')
-                
-                # 创建消息
-                message = (
-                    f"🔔 会议室预订通知（自动任务）\n\n"
-                    f"📅 日期: {start_date}\n"
-                    f"🕒 时间: {start_time_str} - {end_time_str}\n"
-                    f"👤 预订人: {organizer}\n"
-                    f"📝 主题: {subject}"
-                )
+                formatted_start = format_date_with_today_tomorrow(start_time)
+
+                message = ""
                 
                 # 如果有位置信息，添加到消息中
                 if appointment.Location:
-                    message += f"\n📍 地点: {appointment.Location}"
+                    message += f"🔔 会议室: {appointment.Location}\n\n"
+                else:
+                    message += "🔔 会议室: 没有填入位置\n\n"
                 
+                message += (
+                    f"时间: {formatted_start} - {end_time_str}\n"
+                    f"主题: {subject}\n"
+                    f"预订: {organizer}\n"
+                )
+
+                body = appointment.Body
+                if body:
+                    message += f"\n\n{body}"
+
                 # 发送Telegram通知
                 if send_telegram_message(message):
                     # 标记事件为已处理
@@ -148,7 +111,7 @@ def send_telegram_message(message):
         
         # 发送消息到指定的群组
         # client.send_message('我一个人的群', 'message')
-        client.send_message(CONFIG['telegram_chat_id'], message)
+        client.send_message(CONFIG['telegram_chat_id'], "```\n" + message + "\n```")
         return True
     except Exception as e:
         log_message("ERROR", f"发送Telegram消息失败: {str(e)}")
@@ -236,7 +199,7 @@ def mark_event_processed(event_id, appointment):
         conn = sqlite3.connect(CONFIG['db_file'])
         cursor = conn.cursor()
         
-        subject = appointment.Subject if appointment.Subject else "无主题"
+        subject = get_subject(appointment)
         organizer = appointment.Organizer
         start_time = appointment.Start.strftime('%H:%M')
         end_time = appointment.End.strftime('%H:%M')
@@ -284,12 +247,36 @@ def clean_old_events():
         log_message("ERROR", f"清理过期数据失败: {str(e)}")
 
 def generate_event_id(appointment):
-    """生成事件的唯一ID，使用哈希以确保稳定性"""
-    # 使用主题、开始时间、结束时间和组织者生成唯一标识
-    event_str = f"{appointment.Subject}_{appointment.Start}_{appointment.End}_{appointment.Organizer}"
-    print(event_str)
-    # 使用SHA-256哈希确保ID的唯一性和一致性
-    return hashlib.sha256(event_str.encode('utf-8')).hexdigest()
+    """生成事件的唯一ID"""
+    subject = get_subject(appointment)
+    startTime = appointment.Start.strftime('%Y-%m-%d %H:%M:%S')
+    endTime = appointment.End.strftime('%Y-%m-%d %H:%M:%S')
+    organizer = appointment.Organizer if appointment.Organizer else "未知"
+    location = appointment.Location if appointment.Location else "无地点"
+    event_str = f"{startTime}_{endTime}_{subject}_{organizer}_{location}"
+    
+    return event_str
+
+def get_subject(appointment):
+    """获取约会的主题"""
+    subject = appointment.ConversationTopic if appointment.ConversationTopic else appointment.Subject
+    subject = subject if subject else "无主题"
+    return subject
+
+def format_date_with_today_tomorrow(appointment_time):
+    today = datetime.datetime.now().date()
+    tomorrow = today + datetime.timedelta(days=1)
+    appointment_date = appointment_time.date()
+    
+    start_time = appointment_time.strftime('%H:%M')
+    
+    if appointment_date == today:
+        return f"今天 {start_time}"
+    elif appointment_date == tomorrow:
+        return f"明天 {start_time}"
+    else:
+        return f"{appointment_time.strftime('%m月%d日')} {start_time}"
+    
 
 def main():
     """主函数"""
@@ -298,14 +285,6 @@ def main():
 
     client.start()
     log_message("INFO", f"启动会议室预订监控服务, 检查间隔: {CONFIG['check_interval_minutes']}分钟")
-    
-    # try:
-    #     send_telegram_message("🔄 会议室预订监控服务已启动2")
-    #     log_message("INFO", "已成功发送启动通知")
-    # except Exception as e:
-    #     log_message("ERROR", f"发送启动通知失败: {str(e)}")
-
-    # log_message("INFO", f"启动会议室预订监控服务, 检查间隔: {CONFIG['check_interval_minutes']}分钟")
     
     # 立即执行一次
     check_room_bookings()
